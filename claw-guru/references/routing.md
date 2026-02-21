@@ -2,11 +2,23 @@
 
 ---
 
+## Table of contents
+
+1. Deterministic binding precedence
+2. Binding template
+3. Session key behavior and edge cases
+4. Discord routing pitfalls
+5. Multi-account + multi-agent pattern
+6. Slash command collisions in multi-bot setups
+7. Cross-agent visibility and messaging
+
+---
+
 ## 1) Deterministic binding precedence
 
 Most-specific wins:
 1. `match.peer`
-2. `match.parentPeer` (if used)
+2. `match.parentPeer` (thread inheritance)
 3. `match.guildId + roles` (Discord role routing)
 4. `match.guildId`
 5. `match.teamId`
@@ -15,6 +27,8 @@ Most-specific wins:
 8. default agent
 
 If multiple entries match in the same tier, first in config order wins.
+
+If a binding has multiple match fields, all must match (AND semantics).
 
 ---
 
@@ -40,24 +54,37 @@ Verified peer kinds: `direct | group | channel | dm`.
 
 ---
 
-## 3) Discord routing pitfalls
+## 3) Session key behavior and edge cases
+
+- DMs typically collapse to agent main session (default `session.dmScope=main`).
+- Group/channel chats remain isolated by channel+peer id.
+- Discord/Slack threads append `:thread:<threadId>` suffix.
+- Telegram forum topics include `:topic:<topicId>` in group key.
+
+When users report “wrong memory” or “context leaking,” verify whether this is expected main-session DM collapse vs true routing misbind.
+
+---
+
+## 4) Discord routing pitfalls
 
 ### Symptom
-Agent replies in wrong channels or broadly in guild.
+Agent replies in wrong channels or too broadly in guild.
 
 ### Common causes
 - Wrong `peer.kind`
 - Wrong `guildId`/`peer.id`
 - Binding attached to wrong `accountId`
+- IDs copied as names/slugs where explicit IDs are needed
 
 ### Exact fix
-- Use Developer Mode, re-copy IDs.
+- Re-copy IDs with Developer Mode.
 - For text channels, set `peer.kind: "channel"`.
 - Ensure binding references intended bot account.
+- Prefer explicit `guildId` + channel id bindings for deterministic behavior.
 
 ---
 
-## 4) Multi-account + multi-agent pattern
+## 5) Multi-account + multi-agent pattern
 
 ```json5
 {
@@ -86,7 +113,7 @@ Use account-level routing first; add peer-specific overrides only where needed.
 
 ---
 
-## 5) Slash command collisions in multi-bot setups
+## 6) Slash command collisions in multi-bot setups
 
 If Discord returns command uniqueness failures, disable native skill command registration on overlapping bots:
 
@@ -110,7 +137,7 @@ Global alternative:
 
 ---
 
-## 6) Cross-agent visibility and messaging
+## 7) Cross-agent visibility and messaging
 
 ### Session visibility
 ```json5
@@ -132,3 +159,5 @@ Verified options: `self | tree | agent | all`.
 ```
 
 Both source and target agent IDs must be permitted.
+
+Also verify each source agent’s `subagents.allowAgents` when spawning downstream agents.

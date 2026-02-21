@@ -1,7 +1,25 @@
 # OpenClaw Config Reference (verified patterns)
 
-Source of truth for accepted values: local installed schema in
+Source of truth: local installed schema in
 `~/.npm-global/lib/node_modules/openclaw/dist/config-*.js`.
+
+Use:
+```bash
+bash scripts/schema_probe.sh <key>
+```
+
+---
+
+## Table of contents
+
+1. Verified enums / key values
+2. Commands block
+3. Heartbeat block
+4. Agents + subagents
+5. Bindings and routing essentials
+6. Discord and Slack high-signal keys
+7. Common policy guardrails
+8. Safe edit checklist
 
 ---
 
@@ -10,22 +28,45 @@ Source of truth for accepted values: local installed schema in
 ### Commands
 - `commands.native`: `true | false | "auto"`
 - `commands.nativeSkills`: `true | false | "auto"`
-- `commands.restart`: boolean (default true)
+- `commands.restart`: boolean
 
-> Verified from `NativeCommandsSettingSchema = z.union([z.boolean(), z.literal("auto")])`.
+Verified from dist:
+- `const NativeCommandsSettingSchema = z.union([z.boolean(), z.literal("auto")]);`
 
 ### DM / Group policy
 - `dmPolicy`: `"pairing" | "allowlist" | "open" | "disabled"`
 - `groupPolicy`: `"open" | "disabled" | "allowlist"`
 
+Verified from dist:
+- `const DmPolicySchema = z.enum(["pairing","allowlist","open","disabled"]);`
+- `const GroupPolicySchema = z.enum(["open","disabled","allowlist"]);`
+
 ### Reply threading
 - `replyToMode`: `"off" | "first" | "all"`
+
+Verified from dist:
+- `const ReplyToModeSchema = z.union([z.literal("off"), z.literal("first"), z.literal("all")]);`
 
 ### Bindings peer kind
 - `bindings[].match.peer.kind`: `"direct" | "group" | "channel" | "dm"`
 
+Verified from dist binding schema.
+
 ### Session visibility
 - `tools.sessions.visibility`: `"self" | "tree" | "agent" | "all"`
+
+Verified from dist `z.enum([...])` in Tools schema.
+
+### Slack mode
+- `channels.slack.mode`: `"socket" | "http"`
+
+Verified from dist `z.enum(["socket","http"])`.
+
+### Heartbeat target/accountId
+- `heartbeat.target` is **string** (not strict enum in schema).
+- `heartbeat.accountId` is **string**.
+
+Implication: schema may accept values that runtime later rejects (e.g., unknown target/account). Always verify with `openclaw doctor` + runtime logs.
 
 ---
 
@@ -46,13 +87,13 @@ Source of truth for accepted values: local installed schema in
 ```
 
 ### Multi-agent slash command conflict guard
-If multiple Discord bots register duplicate skill/native commands and you see uniqueness errors, set:
+If multiple Discord bots register overlapping commands and you see uniqueness errors:
 
 ```json5
 { commands: { nativeSkills: false } }
 ```
 
-You can also override per account:
+Per account override:
 
 ```json5
 {
@@ -66,6 +107,9 @@ You can also override per account:
 }
 ```
 
+Slack note: `commands.native: "auto"` does **not** auto-enable Slack native commands.
+Use explicit `channels.slack.commands.native: true` (or global `commands.native: true`).
+
 ---
 
 ## 3) Heartbeat block
@@ -75,8 +119,8 @@ You can also override per account:
   agents: {
     defaults: {
       heartbeat: {
-        every: "30m",      // use "0m" to disable
-        target: "last",    // "last" | "none" | channel id/name (validated)
+        every: "30m",      // "0m" disables
+        target: "last",    // last | none | provider id string (runtime-validated)
         includeReasoning: false,
         ackMaxChars: 300
       }
@@ -87,7 +131,7 @@ You can also override per account:
 
 Important behavior:
 - If **any** `agents.list[].heartbeat` block exists, only those agents run heartbeat.
-- Invalid `heartbeat.target` causes validation issues ("unknown heartbeat target: ...").
+- Invalid `heartbeat.target` or `accountId` can fail runtime delivery even if schema parse passes.
 
 ---
 
@@ -138,9 +182,10 @@ If spawn/message fails between agents, validate both allowlists.
 ```
 
 Notes:
-- `channel` is required in each binding.
+- `match.channel` is required.
 - Most-specific match wins (peer > guild/team > account > channel fallback).
 - For Discord text channels, `peer.kind` should usually be `"channel"`.
+- If a binding sets multiple fields, matching is AND semantics.
 
 ---
 
@@ -155,10 +200,15 @@ Notes:
 - `channels.discord.commands.nativeSkills`
 - `channels.discord.replyToMode`
 
+Delivery target format:
+- `user:<id>` for DM
+- `channel:<id>` for guild channel
+- Bare numeric IDs are rejected.
+
 ### Slack
 - `channels.slack.mode`: `"socket" | "http"`
-- Socket mode: requires `botToken` + `appToken`
-- HTTP mode: requires `botToken` + `signingSecret`
+- Socket mode requires `botToken` + `appToken`
+- HTTP mode requires `botToken` + `signingSecret`
 - `channels.slack.groupPolicy`
 - `channels.slack.dmPolicy`
 - `channels.slack.replyToMode`
@@ -166,7 +216,15 @@ Notes:
 
 ---
 
-## 7) Safe edit checklist (copy/paste)
+## 7) Common policy guardrails
+
+- `dmPolicy: "open"` requires `allowFrom` to include `"*"` (provider-specific path).
+- Discord IDs in config must be strings (quote numeric IDs).
+- Fallback groupPolicy behavior can differ if provider section is missing entirely; prefer explicit provider config.
+
+---
+
+## 8) Safe edit checklist (copy/paste)
 
 1. Probe schema: `bash scripts/schema_probe.sh <key>`
 2. Backup config

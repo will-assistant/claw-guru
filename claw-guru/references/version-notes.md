@@ -1,6 +1,6 @@
 # OpenClaw Version Notes & Migration Guardrails
 
-Use this file whenever a config worked before but fails after upgrade.
+Use this when config worked before but fails after upgrade.
 
 ---
 
@@ -21,7 +21,7 @@ Dist source is authoritative for your install:
 Current verified schema:
 - `true | false | "auto"`
 
-If old config uses removed literals (for example legacy values), replace with supported values and run:
+If old config uses removed literals, replace with supported values and run:
 
 ```bash
 openclaw doctor
@@ -35,6 +35,10 @@ Current verified options:
 ### Binding peer kinds
 Current verified options:
 - `direct | group | channel | dm`
+
+### Policy strictness and auth guardrails
+Recent versions enforce stricter startup checks for non-loopback binds without auth.
+If gateway fails after upgrade, verify `gateway.bind` and `gateway.auth.*` together.
 
 ---
 
@@ -50,6 +54,25 @@ Current verified options:
 
 ---
 
-## 4) Downgrade-safe editing principle
+## 4) Install / update checklist for community users
 
-When unsure, prefer values accepted across more versions (`true/false` over niche literals), then validate with local schema before restart.
+1. Check current version:
+```bash
+openclaw --version
+```
+2. Update OpenClaw using your install method.
+3. Run:
+```bash
+openclaw doctor
+openclaw gateway restart
+openclaw gateway status
+openclaw channels status --probe
+```
+4. Re-test channel auth-sensitive paths (Discord/Slack tokens, webhook paths, pairing).
+5. If behavior changed, compare config against current docs and local schema.
+
+---
+
+## 5) Downgrade-safe editing principle
+
+When unsure, prefer broadly accepted values (`true/false` over niche literals), then validate with local schema before restart.

@@ -4,16 +4,35 @@ Format: **Exact error/signature** → Root cause → Exact fix.
 
 ---
 
+## Table of contents
+
+1. Slash commands / registration
+2. Config schema mismatch
+3. JSON5 parse/edit mistakes
+4. Gateway start blocked
+5. Non-loopback bind without auth
+6. Port conflict
+7. Heartbeat target/account mismatch
+8. Routing over-broad / wrong channel responses
+9. DM blocked by policy
+10. Slack mode/token mismatch
+11. Discord ID type mismatch
+12. Probe warning misread as outage
+13. Sessions visibility forbidden
+14. Sub-agent spawn denied
+
+---
+
 ## 1) Slash commands / registration
 
 ### Error
 `Application command names must be unique`
 
 **Root cause**
-Multiple Discord bot accounts are registering overlapping native skill command names.
+Multiple Discord bot accounts register overlapping native skill command names.
 
 **Exact fix**
-Set `nativeSkills` to false globally or on one/more conflicting accounts.
+Set `nativeSkills` to false globally or on conflicting accounts.
 
 ```json5
 { commands: { nativeSkills: false } }
@@ -59,7 +78,25 @@ bash scripts/schema_probe.sh nativeSkills
 
 ---
 
-## 3) Gateway start blocked
+## 3) JSON5 parse/edit mistakes
+
+### Error
+`Invalid config ...` after manual edits
+
+**Root cause**
+Syntax break in JSON5 (unclosed braces, bad commas/quotes, malformed comments).
+
+**Exact fix**
+Revert to backup, re-apply minimal edit, run:
+```bash
+openclaw doctor
+```
+
+Avoid validating with strict JSON tools (`python -m json.tool`) because OpenClaw config is JSON5.
+
+---
+
+## 4) Gateway start blocked
 
 ### Error
 `Gateway start blocked: set gateway.mode=local`
@@ -77,7 +114,7 @@ openclaw gateway restart
 
 ---
 
-## 4) Non-loopback bind without auth
+## 5) Non-loopback bind without auth
 
 ### Error
 `refusing to bind gateway ... without auth`
@@ -86,12 +123,11 @@ openclaw gateway restart
 Gateway bind is non-loopback but auth token/password not configured.
 
 **Exact fix**
-Configure auth (`gateway.auth.token` or password mode) before LAN/tailnet/custom bind.
-Then restart gateway.
+Configure `gateway.auth.*` before LAN/tailnet/custom bind, then restart.
 
 ---
 
-## 5) Port conflict
+## 6) Port conflict
 
 ### Error
 `another gateway instance is already listening`
@@ -110,30 +146,19 @@ openclaw gateway restart
 
 ---
 
-## 6) Heartbeat target invalid
+## 7) Heartbeat target/account mismatch
 
-### Error
+### Errors
 `unknown heartbeat target: <value>`
 
-**Root cause**
-`agents.*.heartbeat.target` points to unknown channel id/name.
-
-**Exact fix**
-Use `last`, `none`, or a valid configured channel id.
-Then restart and verify.
-
----
-
-## 7) Heartbeat account mismatch
-
-### Error
 `heartbeat: unknown accountId`
 
 **Root cause**
-Heartbeat `accountId` does not exist for selected target channel.
+Heartbeat target/account does not map to a valid configured delivery route.
 
 **Exact fix**
-Set an existing account id under `channels.<provider>.accounts.<id>` or remove `accountId`.
+Use `last`, `none`, or valid channel target; use existing account id for that channel (or remove `accountId`).
+Then restart and verify logs.
 
 ---
 
@@ -143,10 +168,10 @@ Set an existing account id under `channels.<provider>.accounts.<id>` or remove `
 Agent responds in unexpected channels after binding change.
 
 **Root cause**
-Binding mismatch (often wrong `peer.kind`, `peer.id`, `guildId`, or `accountId`).
+Binding mismatch (wrong `peer.kind`, `peer.id`, `guildId`, `teamId`, `accountId`) or over-broad lower-tier binding winning.
 
 **Exact fix**
-Re-copy IDs; set exact binding.
+Re-copy IDs; tighten binding specificity.
 For Discord text channels use:
 
 ```json5
@@ -166,7 +191,7 @@ Logs show pairing/allowlist/blocked; DMs ignored.
 **Exact fix**
 - `dmPolicy: "pairing"`: approve code
 - `dmPolicy: "allowlist"`: add sender
-- `dmPolicy: "open"`: include `"*"` in `allowFrom`
+- `dmPolicy: "open"`: include `"*"` in provider `allowFrom`
 
 Verify:
 ```bash
@@ -176,7 +201,35 @@ openclaw channels status --probe
 
 ---
 
-## 10) Probe warning misread as outage
+## 10) Slack mode/token mismatch
+
+### Signatures
+Slack not connecting; auth/event errors when switching socket/http mode.
+
+**Root cause**
+Wrong token set for mode:
+- Socket mode needs `botToken` + `appToken`
+- HTTP mode needs `botToken` + `signingSecret`
+
+**Exact fix**
+Set matching credentials for configured `channels.slack.mode`, restart, and re-check probe.
+
+---
+
+## 11) Discord ID type mismatch
+
+### Error
+`Discord IDs must be strings (wrap numeric IDs in quotes).`
+
+**Root cause**
+Numeric literal used where schema requires string ID.
+
+**Exact fix**
+Quote all Discord IDs in config.
+
+---
+
+## 12) Probe warning misread as outage
 
 ### Signature
 `RPC probe failed / SECURITY ERROR` while service appears running.
@@ -185,7 +238,7 @@ openclaw channels status --probe
 Probe transport/auth mismatch, not always runtime crash.
 
 **Exact fix**
-Confirm actual runtime status + logs before rollback.
+Confirm runtime + logs before rollback:
 
 ```bash
 openclaw gateway status
@@ -194,16 +247,16 @@ openclaw logs --follow
 
 ---
 
-## 11) Sessions visibility forbidden
+## 13) Sessions visibility forbidden
 
 ### Error
-`forbidden` when reading other agent session history
+`forbidden` when reading other agent session history.
 
 **Root cause**
 `tools.sessions.visibility` too restrictive.
 
 **Exact fix**
-Set required scope (often `all` for full cross-agent diagnostics):
+Set required scope (often `all` for cross-agent diagnostics):
 
 ```json5
 { tools: { sessions: { visibility: "all" } } }
@@ -213,13 +266,13 @@ Verified values: `self | tree | agent | all`.
 
 ---
 
-## 12) Sub-agent spawn denied
+## 14) Sub-agent spawn denied
 
 ### Signature
-Spawn attempts fail for a target agent.
+Spawn attempts fail for target agent.
 
 **Root cause**
-`subagents.allowAgents` and/or `tools.agentToAgent.allow` does not include target.
+`subagents.allowAgents` and/or `tools.agentToAgent.allow` excludes target.
 
 **Exact fix**
 Add target IDs in both relevant allowlists and restart gateway.
